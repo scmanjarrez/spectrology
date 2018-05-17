@@ -10,6 +10,30 @@ Website: https://github.com/solusipse/spectrology
 
 from PIL import Image, ImageOps
 import wave, math, array, argparse, sys, timeit
+from Crypto.Cipher import AES
+from Crypto.Hash import MD5
+import sys
+
+OUT = ''
+KEY = ''
+IV = ''
+ENC = False
+DEC = False
+
+def generate_key_iv(passwd1, passwd2):
+    h1 = MD5.new()
+    h2 = MD5.new()
+    h1.update(passwd1)
+    h2.update(passwd2)
+    return h1.digest(), h2.digest()
+
+def encrypt(data, key, iv):
+    cfb_cipher = AES.new(key, AES.MODE_CFB, iv)
+    return cfb_cipher.encrypt(data)
+
+def decrypt(data, key, iv):
+    cfb_decipher = AES.new(key, AES.MODE_CFB, iv)
+    return cfb_decipher.decrypt(data)
 
 def parser():
     parser = argparse.ArgumentParser()
@@ -21,6 +45,10 @@ def parser():
     parser.add_argument("-t", "--top", help="Top frequency range. Default value: 20000.", type=int)
     parser.add_argument("-p", "--pixels", help="Pixels per second. Default value: 30.", type=int)
     parser.add_argument("-s", "--sampling", help="Sampling rate. Default value: 44100.", type=int)
+    parser.add_argument("-e", "--encrypt", help="Encrypt audio file.", action='store_true')
+    parser.add_argument("-d", "--decrypt", help="Decrypt audio file.", action='store_true')
+    parser.add_argument("-p1", "--pass1", help="Password Key.", type=str)
+    parser.add_argument("-p2", "--pass2", help="Password IV.", type=str)
     args = parser.parse_args()
 
     minfreq = 200
@@ -31,6 +59,9 @@ def parser():
     rotate  = False
     invert  = False
 
+    if (args.encrypt or args.decrypt) and (not args.pass1 or not args.pass2):
+        print("Password1 and Password2 required.")
+        sys.exit()
     if args.output:
         output = args.output
     if args.bottom:
@@ -51,7 +82,13 @@ def parser():
     print('Pixels per second: %d.' % pxs)
     print('Sampling rate: %d.' % wavrate)
     print('Rotate Image: %s.' % ('yes' if rotate else 'no'))
+    global OUT, KEY, IV, ENC, DEC
+    OUT = output
 
+
+    KEY, IV = generate_key_iv(args.pass1, args.pass2)
+    ENC = args.encrypt
+    DEC = args.decrypt
     return (args.INPUT, output, minfreq, maxfreq, pxs, wavrate, rotate, invert)
 
 def convert(inpt, output, minfreq, maxfreq, pxs, wavrate, rotate, invert):
@@ -118,3 +155,21 @@ def genwave(frequency, amplitude, samples, samplerate):
 if __name__ == '__main__':
     inpt = parser()
     convert(*inpt)
+
+    if ENC:
+        with open(OUT, 'r') as f:
+            data = f.read()
+        c_data = encrypt(data, KEY, IV)
+        output = wave.open("TESTe.wav", 'w')
+        output.setparams((1, 2, 44100, 0, 'NONE', 'not compressed'))
+        output.writeframes(c_data)
+        output.close()
+
+    if DEC:
+        with open("TESTe.wav", 'r') as f:
+            data = f.read()
+        d_data = decrypt(data, KEY, IV)
+        output = wave.open("TESTd.wav", 'w')
+        output.setparams((1, 2, 44100, 0, 'NONE', 'not compressed'))
+        output.writeframes(d_data)
+        output.close()
